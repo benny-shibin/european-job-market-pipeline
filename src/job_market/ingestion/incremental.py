@@ -25,6 +25,7 @@ def content_hash(job):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+
 def initialize_database(con):
     con.execute("""
         CREATE TABLE IF NOT EXISTS job_state (
@@ -37,7 +38,22 @@ def initialize_database(con):
             PRIMARY KEY (source, job_id)
         )
     """)
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS job_history (
+            source TEXT NOT NULL,
+            job_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            change_type TEXT NOT NULL,
+            detected_at TEXT NOT NULL,
+            job_json TEXT NOT NULL,
+            PRIMARY KEY (source, job_id, version)
+        )
+    """)
+
     con.commit()
+
 
 
 def classify_job(con, job, timestamp):
@@ -46,13 +62,14 @@ def classify_job(con, job, timestamp):
     if not job_id:
         return "invalid"
 
+    source = "arbeitnow"
     new_hash = content_hash(job)
 
     existing = con.execute("""
         SELECT content_hash, version
         FROM job_state
         WHERE source = ? AND job_id = ?
-    """, ("arbeitnow", job_id)).fetchone()
+    """, (source, job_id)).fetchone()
 
     if existing is None:
         con.execute("""
@@ -61,33 +78,58 @@ def classify_job(con, job, timestamp):
              first_seen, last_seen, version)
             VALUES (?, ?, ?, ?, ?, 1)
         """, (
-            "arbeitnow", job_id, new_hash,
+            source, job_id, new_hash,
             timestamp, timestamp
         ))
-        return "new"
 
-    old_hash, version = existing
+        status = "new"
+        version = 1
 
-    if old_hash != new_hash:
-        con.execute("""
-            UPDATE job_state
-            SET content_hash = ?,
-                last_seen = ?,
-                version = ?
-            WHERE source = ? AND job_id = ?
-        """, (
-            new_hash, timestamp, version + 1,
-            "arbeitnow", job_id
-        ))
-        return "updated"
+    else:
+        old_hash, version = existing
 
+        if old_hash != new_hash:
+            version += 1
+
+            con.execute("""
+                UPDATE job_state
+                SET content_hash = ?,
+                    last_seen = ?,
+                    version = ?
+                WHERE source = ? AND job_id = ?
+            """, (
+                new_hash, timestamp, version,
+                source, job_id
+            ))
+
+            status = "updated"
+
+        else:
+            con.execute("""
+                UPDATE job_state
+                SET last_seen = ?
+                WHERE source = ? AND job_id = ?
+            """, (timestamp, source, job_id))
+
+            return "unchanged"
+
+    # Preserve each new or changed version.
     con.execute("""
-        UPDATE job_state
-        SET last_seen = ?
-        WHERE source = ? AND job_id = ?
-    """, (timestamp, "arbeitnow", job_id))
+        INSERT INTO job_history
+        (source, job_id, version, content_hash,
+         change_type, detected_at, job_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        source,
+        job_id,
+        version,
+        new_hash,
+        status,
+        timestamp,
+        json.dumps(job, ensure_ascii=False)
+    ))
 
-    return "unchanged"
+    return status
 
 
 def run_incremental(max_pages=2):
