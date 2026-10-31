@@ -24,7 +24,7 @@ python -m src.job_market.cli run --sources arbeitnow jobicy
 streamlit run dashboard/app.py
 ```
 
-Open http://localhost:8501. Use **Light mode** in the sidebar to switch the interface and charts, and **Animations** to control motion. Advanced criteria live under **More filters**; selections are preserved when switching themes or motion settings. Stop the dashboard before warehouse updates if DuckDB reports a lock. `python -m src.job_market.cli run` defaults to Arbeitnow only. `--max-pages 5` adjusts the fetch cap. Jobicy permits new automated synchronization passes at most hourly; daily execution is recommended. Use `python -m src.job_market.cli resume` to process saved data without another API call.
+Open http://localhost:8501. Use **Light mode** in the sidebar to switch the interface and charts. Animations are enabled by default; decorative motion respects browser reduced-motion settings. Advanced criteria live under **More filters**; selections are preserved when switching themes. Stop the dashboard before warehouse updates if DuckDB reports a lock. `python -m src.job_market.cli run` defaults to Arbeitnow only. `--max-pages 5` adjusts the fetch cap. Jobicy permits new automated synchronization passes at most hourly; daily execution is recommended. Use `python -m src.job_market.cli resume` to process saved data without another API call.
 
 The **Source connections & ingestion health** panel audits the saved Arbeitnow and Jobicy data. LinkedIn and StepStone are labelled **Access required**: the reviewed official APIs do not provide a suitable free public jobs-search feed. See [source access findings](docs/sources.md).
 
@@ -42,7 +42,7 @@ The dashboard displays a synthetic-data banner. Demo generation refuses an exist
 - An interactive offline 3D globe zoomed toward Europe, with country labels, approximate city/country signals, mapped-location coverage, and hoverable posting counts.
 - Country filters, posting rankings, company totals and remote-share statistics, with multi-country/unknown scopes reported separately.
 - A custom observatory layout with oversized typography, a globe beside the headline, charcoal/lime and warm light themes, compact metrics, country comparisons, lollipop rankings, work-arrangement mosaics, and source skill heatmaps.
-- Optional motion with staggered reveals, an orbital sweep and chart transitions; decorative motion respects the browser’s reduced-motion preference.
+- Default animations with staggered reveals, an orbital sweep and chart transitions; decorative motion respects the browser’s reduced-motion preference.
 - Source, title/company, normalized location, company, skill and remote-status filters; equivalent city/country names share one entry, with original labels preserved in listings and CSV exports.
 - Skill rankings, company/location summaries and reported work arrangement charts.
 - UTC daily posting totals, remote share and multi-skill historical charts with source/date/skill selection; explicit single-day and empty states.

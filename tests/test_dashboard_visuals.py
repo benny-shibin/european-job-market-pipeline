@@ -74,19 +74,19 @@ def test_streamlit_entrypoint_resolves_project_modules_from_isolated_path(dashbo
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_motion_controls_and_new_chart_types_preserve_filters(dashboard):
+def test_default_motion_and_new_chart_types_preserve_filters(dashboard):
     app = render(dashboard)
     assert chart(app, 'arrangement_chart')['data'][0]['type'] == 'treemap'
     assert any(trace['type'] == 'scatter' for trace in chart(app, 'skills_chart')['data'])
     assert len(chart(app, 'globe_locations')['data']) == 2  # Total and remote subset.
-    app.toggle(key='animations').set_value(False).run(timeout=30)
-    assert not app.exception
-    assert chart(app, 'skills_chart')['layout']['transition']['duration'] == 0
+    assert not any(toggle.key == 'animations' for toggle in app.toggle)
+    assert chart(app, 'skills_chart')['layout']['transition']['duration'] == 550
     app.toggle(key='light_mode').set_value(True).run(timeout=30)
     assert not app.exception
     assert chart(app, 'skills_chart')['layout']['paper_bgcolor'] == palette(True)['surface']
     app.button[0].click().run(timeout=30)
     assert not app.exception
-    assert app.toggle(key='animations').value is False
+    assert not any(toggle.key == 'animations' for toggle in app.toggle)
+    assert chart(app, 'skills_chart')['layout']['transition']['duration'] == 550
     assert app.toggle(key='light_mode').value is True
     assert metric(app, 'Job postings') == '1'

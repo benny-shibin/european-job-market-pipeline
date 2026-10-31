@@ -9,3 +9,19 @@ __pycache__
 .coverage
 htmlcov
 .DS_Store
+
+# Local planning and draft collateral
+.planning/
+planning/
+plans/
+PLAN.md
+plan.md
+PLANS.md
+plans.md
+ROADMAP.md
+roadmap.md
+TODO.md
+todo.md
+MILESTONES.md
+milestones.md
+artifacts/

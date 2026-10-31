@@ -37,7 +37,6 @@ st.set_page_config(page_title='Orbit · European Job Intelligence', page_icon=st
 logo_uri = 'data:image/svg+xml;base64,' + base64.b64encode(LOGO_PATH.read_bytes()).decode()
 st.sidebar.markdown(f'<div class="brand"><img src="{logo_uri}" alt="Orbit logo"><div><div class="brand-name">ORBIT</div><div class="brand-subtitle">Job intelligence</div></div></div>', unsafe_allow_html=True)
 light_mode = st.sidebar.toggle('Light mode', value=False, key='light_mode', help='Switch the dashboard and charts between light and dark palettes.')
-animations = st.sidebar.toggle('Animations', value=True, key='animations', help='Enable decorative motion and chart transitions.')
 THEME = palette(light_mode)
 variables = dict(bg=THEME['bg'], surface=THEME['surface'], raised=THEME['raised'], text=THEME['text'],
                  muted=THEME['muted'], border=THEME['border'], accent=THEME['accent'],
@@ -46,15 +45,12 @@ variables = dict(bg=THEME['bg'], surface=THEME['surface'], raised=THEME['raised'
                  **{'accent-wash': THEME['accent'] + '10',
                     'grid-wash': THEME['blue'] + '08',
                     'edge-glow': THEME['accent'] + ('25' if light_mode else '40'),
-                    'motion-state': 'running' if animations else 'paused',
+                    'motion-state': 'running',
                     'logo-brightness': '.65' if light_mode else '1',
-                    'reveal-duration': '650ms' if animations else '0ms'})
+                    'reveal-duration': '650ms'})
 
 css_variables = ';'.join(f'--{name}:{value}' for name, value in variables.items())
 st.markdown(f"<style>:root{{{css_variables};color-scheme:{'light' if light_mode else 'dark'}}}" + Path(__file__).with_name('styles.css').read_text() + '</style>', unsafe_allow_html=True)
-
-if not animations:
-    st.markdown('<style>*,*::before,*::after{animation:none!important;transition:none!important}</style>', unsafe_allow_html=True)
 
 FILTER_KEYS = ['search', 'locations', 'companies', 'skills', 'arrangement', 'sources', 'countries']
 
@@ -206,7 +202,7 @@ def style_chart(fig, height=410):
         xaxis=dict(gridcolor=THEME['grid'], zeroline=False, title_font_size=12, tickfont=dict(color=THEME['muted'])),
         yaxis=dict(showgrid=False, zeroline=False, automargin=True, tickfont=dict(color=THEME['text'], size=12)),
         showlegend=False, hoverlabel=dict(bgcolor=THEME['hover'], font=dict(color=THEME['hover_text'], size=13)),
-        transition=dict(duration=550 if animations else 0, easing='cubic-in-out'),
+        transition=dict(duration=550, easing='cubic-in-out'),
     )
     return fig
 
@@ -359,26 +355,65 @@ with globe_slot.container():
                     config={'displaylogo': False, 'scrollZoom': True, 'displayModeBar': False})
     st.caption(f'{mapped_count:,} of {len(filtered):,} filtered postings mapped · {len(filtered) - mapped_count:,} lack an unambiguous known location. Circles mark cities; diamonds mark countries. Locations are approximate, not exact offices. Region-only and multi-location postings remain unplaced.')
 st.markdown('<div class="section-rule"><span>01 / COUNTRY REACH</span><span>EXPLORE THE DISTRIBUTION ↓</span></div>', unsafe_allow_html=True)
+countries, unassigned_count = country_statistics(filtered)
+country_denominator = len(filtered.drop_duplicates(['source', 'job_id']))
+st.caption('Country percentages use all filtered postings, including records without a single identifiable country. Percentage-point gaps compare adjacent country ranks.')
+if not countries.empty:
+    highlight_cards = []
+    swatches = [THEME['accent'], THEME['blue'], THEME['purple']]
+    for rank, row in enumerate(countries.head(3).itertuples()):
+        if rank + 1 < len(countries):
+            following = countries.iloc[rank + 1]
+            gap = row.share - following['share']
+            gap_label = '<0.1' if 0 < gap < .1 else f'{gap:.1f}'
+            comparison = (f'Same share as {escape(following["country"])}' if gap == 0 else
+                          f'{escape(gap_label)} pp ahead of {escape(following["country"])}')
+        else:
+            comparison = 'Share of all filtered postings'
+        highlight_cards.append(f'''<div class="country-highlight" style="--country-color:{swatches[rank]}">
+            <div class="country-highlight-top"><span>0{rank + 1} / {escape(row.country)}</span><span>{row.jobs:,} postings</span></div>
+            <div class="country-highlight-value">{row.share:.1f}<small>%</small></div>
+            <div class="country-share-track"><span style="width:{row.share:.8f}%"></span></div>
+            <p>{comparison}</p></div>''')
+    st.markdown('<div class="country-highlights">' + ''.join(highlight_cards) + '</div>', unsafe_allow_html=True)
+    distribution = [(row.country, row.share, swatches[index]) for index, row in enumerate(countries.head(3).itertuples())]
+    remaining = int(countries.iloc[3:]['jobs'].sum())
+    if remaining:
+        distribution.append(('Other assigned countries', 100 * remaining / country_denominator, THEME['land']))
+    if unassigned_count:
+        distribution.append(('Unassigned / multiple countries', 100 * unassigned_count / country_denominator, THEME['muted']))
+    strip = ''.join(f'<span style="width:{share:.8f}%;background:{color}" title="{escape(name)}: {share:.1f}%"></span>' for name, share, color in distribution)
+    legend = ''.join(f'<span><i style="background:{color}"></i>{escape(name)} <b>{share:.1f}%</b></span>' for name, share, color in distribution)
+    st.markdown(f'<div class="country-share-strip" role="img" aria-label="Distribution of all filtered postings by country">{strip}</div><div class="country-share-legend">{legend}</div>', unsafe_allow_html=True)
 country_left, country_right = st.columns([1.3, 1], gap='large')
 with country_left:
     st.subheader('Hiring signals by country')
     st.caption('Top 8 countries · distinct sampled postings · city and country labels rolled up together')
-    countries, unassigned_count = country_statistics(filtered)
+    country_measure = st.radio('Compare countries by', ['Share of jobs', 'Posting count'], horizontal=True, key='country_measure')
     if not countries.empty:
         top = countries.head(8).copy()
         top['label'] = top['country']
         top = top.sort_values('jobs')
-        fig = go.Figure(go.Bar(x=top['jobs'], y=top['label'], orientation='h', name='All postings',
-            marker=dict(color=THEME['raised'], cornerradius=5), text=top['jobs'], textposition='outside',
-            cliponaxis=False, customdata=top[['remote_share']],
-            hovertemplate='<b>%{y}</b><br>%{x:,} sampled postings<br>%{customdata[0]:.1f}% marked remote<extra></extra>'))
-        fig.add_trace(go.Bar(x=top['remote_jobs'], y=top['label'], orientation='h', name='Marked remote',
-                            marker=dict(color=THEME['accent'], cornerradius=5),
-                            hovertemplate='<b>%{y}</b><br>%{x:,} explicitly remote postings<extra></extra>'))
-        fig = style_chart(fig, 380)
+        percent_mode = country_measure == 'Share of jobs'
+        values = top['share'] if percent_mode else top['jobs']
+        remote_values = 100 * top['remote_jobs'] / country_denominator if percent_mode else top['remote_jobs']
+        labels = [f'{row.share:.1f}% · {row.jobs:,}' if percent_mode else f'{row.jobs:,} · {row.share:.1f}%'
+                  for row in top.itertuples()]
+        leader_name = countries.iloc[0]['country']
+        fig = go.Figure(go.Bar(x=values, y=top['label'], orientation='h', name='All postings',
+            marker=dict(color=[THEME['blue'] if name == leader_name else THEME['blue'] + '66' for name in top['country']],
+                        cornerradius=5, line=dict(color=THEME['accent'], width=[2 if name == leader_name else 0 for name in top['country']])),
+            text=labels, textposition='outside', cliponaxis=False,
+            customdata=top[['jobs', 'share', 'remote_share']],
+            hovertemplate='<b>%{y}</b><br>%{customdata[0]:,} sampled postings<br>%{customdata[1]:.1f}% of all filtered postings<br>%{customdata[2]:.1f}% marked remote within this country<extra></extra>'))
+        fig.add_trace(go.Bar(x=remote_values, y=top['label'], orientation='h', name='Marked remote',
+                            marker=dict(color=THEME['accent'], cornerradius=5), customdata=top[['remote_jobs']],
+                            hovertemplate='<b>%{y}</b><br>%{customdata[0]:,} explicitly remote postings<extra></extra>'))
+        fig = style_chart(fig, 410)
         fig.update_layout(barmode='overlay', showlegend=True,
-                          legend=dict(orientation='h', y=1.15, x=0), xaxis_title='Sampled postings')
-        fig.update_xaxes(range=[0, top['jobs'].max() * 1.2])
+                          legend=dict(orientation='h', y=1.15, x=0),
+                          xaxis_title='Share of all filtered postings' if percent_mode else 'Sampled postings')
+        fig.update_xaxes(range=[0, values.max() * 1.5], ticksuffix='%' if percent_mode else '')
         st.plotly_chart(fig, width='stretch', key='globe_locations', theme=None, config={'displaylogo': False})
     else:
         st.info('No single country can be identified for these filters. Listings remain available below.')
@@ -386,7 +421,7 @@ with country_right:
     st.markdown('<div class="panel-kicker">YOUR SAMPLE, AT A GLANCE</div>', unsafe_allow_html=True)
     if not countries.empty:
         leader = countries.iloc[0]
-        st.markdown(f'<div class="insight-lead"><span>STRONGEST COUNTRY SIGNAL</span><h2>{escape(leader["country"])}</h2><p><strong>{int(leader["jobs"]):,}</strong> postings · {leader["share"]:.1f}% of filtered listings</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="insight-lead"><span>SINGLE-COUNTRY COVERAGE</span><h2>{100 * int(countries["jobs"].sum()) / country_denominator:.1f}%</h2><p><strong>{int(countries["jobs"].sum()):,}</strong> assigned postings · {unassigned_count:,} unassigned</p></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-label">Sources in view</div>', unsafe_allow_html=True)
     for source, count in filtered['source'].value_counts().items():
         st.markdown(f'<div class="source-card"><div><div class="source-name">{escape(source.title())}</div><div class="source-detail">Original source attribution preserved</div></div><span class="source-badge">{count:,} postings</span></div>', unsafe_allow_html=True)

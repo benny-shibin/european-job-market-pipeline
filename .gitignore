@@ -9,3 +9,20 @@ data/
 .coverage
 htmlcov/
 data/
+
+# Local planning and draft collateral
+.planning/
+planning/
+plans/
+PLAN.md
+plan.md
+PLANS.md
+plans.md
+ROADMAP.md
+roadmap.md
+TODO.md
+todo.md
+MILESTONES.md
+milestones.md
+artifacts/
+.DS_Store
