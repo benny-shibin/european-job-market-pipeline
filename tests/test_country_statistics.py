@@ -110,3 +110,39 @@ def test_stale_visual_module_is_refreshed_before_rendering(dashboard, monkeypatc
     app = render(dashboard)
     assert app.multiselect(key='countries').options == ['Germany']
     assert chart(app, 'jobs_globe')['data']
+
+
+def test_country_percentage_highlights_include_unassigned_in_denominator(dashboard):
+    import duckdb
+    with duckdb.connect(str(dashboard / 'data/gold/job_market.duckdb')) as con:
+        con.execute("INSERT INTO dim_locations VALUES (2, 'Germany'), (3, 'Paris'), (4, 'Europe')")
+        con.execute("""INSERT INTO fact_job_postings VALUES
+            ('arbeitnow', 'two', 'Engineer', 1, 2, FALSE, 'https://example.com/two', '2026-10-31'),
+            ('jobicy', 'three', 'Engineer', 1, 3, TRUE, 'https://example.com/three', '2026-10-31'),
+            ('jobicy', 'four', 'Engineer', 1, 4, TRUE, 'https://example.com/four', '2026-10-31')""")
+    app = render(dashboard)
+    figure = chart(app, 'globe_locations')
+    assert figure['layout']['xaxis']['ticksuffix'] == '%'
+    assert figure['data'][0]['text'] == ['25.0% · 1', '50.0% · 2']
+    text = '\n'.join(item.value for item in app.markdown)
+    assert '50.0<small>%</small>' in text
+    assert '25.0 pp ahead of France' in text
+    assert 'Unassigned / multiple countries' in text
+    app.radio(key='country_measure').set_value('Posting count').run(timeout=30)
+    assert not app.exception
+    assert chart(app, 'globe_locations')['data'][0]['text'] == ['1 · 25.0%', '2 · 50.0%']
+    app.multiselect(key='countries').set_value(['Germany']).run(timeout=30)
+    assert not app.exception
+    assert chart(app, 'globe_locations')['data'][0]['text'] == ['2 · 100.0%']
+    assert 'pp ahead of France' not in '\n'.join(item.value for item in app.markdown)
+
+
+def test_equal_country_shares_display_tie(dashboard):
+    import duckdb
+    with duckdb.connect(str(dashboard / 'data/gold/job_market.duckdb')) as con:
+        con.execute("INSERT INTO dim_locations VALUES (2, 'France')")
+        con.execute("INSERT INTO fact_job_postings VALUES ('jobicy', 'two', 'Engineer', 1, 2, TRUE, 'https://example.com/two', '2026-10-31')")
+    app = render(dashboard)
+    text = '\n'.join(item.value for item in app.markdown)
+    assert 'Same share as Germany' in text
+    assert 'pp ahead' not in text
