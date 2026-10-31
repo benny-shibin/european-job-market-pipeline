@@ -5,6 +5,8 @@ from pathlib import Path
 
 import duckdb
 
+from src.job_market.quality.reports import publish_report
+
 
 GOLD_DB = Path("data/gold/job_market.duckdb")
 SNAPSHOT_DB = Path("data/state/snapshots.sqlite")
@@ -79,6 +81,18 @@ def create_daily_snapshot(snapshot_date=None):
             ORDER BY job_count DESC
         """).fetchall()
 
+        remote_column = 'remote' if 'remote' in columns else 'is_remote' if 'is_remote' in columns else None
+        remote_expression = f'SUM(CASE WHEN {remote_column} THEN 1 ELSE 0 END)' if remote_column else 'NULL'
+        source_counts = gold.execute(f"""
+            SELECT source, COUNT(*), {remote_expression}
+            FROM fact_job_postings GROUP BY source
+        """).fetchall()
+        source_skills = gold.execute("""
+            SELECT b.source, s.skill_name, COUNT(DISTINCT (b.source, b.job_id))
+            FROM bridge_job_skills b JOIN dim_skills s USING(skill_key)
+            GROUP BY b.source, s.skill_name
+        """).fetchall()
+
     with sqlite3.connect(SNAPSHOT_DB) as con:
         con.execute("""
             CREATE TABLE IF NOT EXISTS daily_market_snapshots (
@@ -146,6 +160,30 @@ def create_daily_snapshot(snapshot_date=None):
             (snapshot_date, skill_name, job_count)
             for skill_name, job_count in skill_counts
         ])
+
+        con.execute("""CREATE TABLE IF NOT EXISTS daily_source_market_snapshots (
+            snapshot_date TEXT, source TEXT, total_jobs INTEGER NOT NULL, remote_jobs INTEGER,
+            PRIMARY KEY(snapshot_date, source))""")
+        con.execute("""CREATE TABLE IF NOT EXISTS daily_source_skill_snapshots (
+            snapshot_date TEXT, source TEXT, skill_name TEXT, job_count INTEGER NOT NULL,
+            PRIMARY KEY(snapshot_date, source, skill_name))""")
+        con.execute('DELETE FROM daily_source_market_snapshots WHERE snapshot_date=?', (snapshot_date,))
+        con.execute('DELETE FROM daily_source_skill_snapshots WHERE snapshot_date=?', (snapshot_date,))
+        con.executemany('INSERT INTO daily_source_market_snapshots VALUES (?, ?, ?, ?)',
+                        [(snapshot_date, *row) for row in source_counts])
+        con.executemany('INSERT INTO daily_source_skill_snapshots VALUES (?, ?, ?, ?)',
+                        [(snapshot_date, *row) for row in source_skills])
+        stored = con.execute('SELECT total_jobs, remote_jobs FROM daily_market_snapshots WHERE snapshot_date=?', (snapshot_date,)).fetchone()
+        checks = dict(
+            market_matches_gold=stored == (total_jobs, remote_jobs),
+            skill_counts_valid=all(0 <= count <= total_jobs for _, count in skill_counts),
+            skill_rows_unique=len(skill_counts) == len({name for name, _ in skill_counts}),
+            source_totals_match=sum(row[1] for row in source_counts) == total_jobs,
+            remote_count_valid=remote_jobs is None or 0 <= remote_jobs <= total_jobs,
+            source_remote_totals_match=remote_jobs is None or sum(row[2] for row in source_counts) == remote_jobs,
+            stored_skills_match_gold=sorted(con.execute('SELECT skill_name, job_count FROM daily_skill_snapshots WHERE snapshot_date=?', (snapshot_date,)).fetchall()) == sorted(skill_counts),
+        )
+        publish_report('snapshots', checks, details=dict(snapshot_date=snapshot_date))
 
     print(f"Snapshot saved for {snapshot_date}")
     print(f"Total jobs: {total_jobs}")

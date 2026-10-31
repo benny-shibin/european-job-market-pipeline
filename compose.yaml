@@ -1,0 +1,30 @@
+services:
+  pipeline:
+    build:
+      context: .
+      target: runtime
+    command: ["python", "-m", "src.job_market.cli", "run", "--sources", "arbeitnow", "jobicy"]
+    volumes:
+      - job_market_data:/app/data
+    profiles: [pipeline]
+  dashboard:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - job_market_data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 20s
+  tests:
+    build:
+      context: .
+      target: test
+    profiles: [test]
+volumes:
+  job_market_data:
