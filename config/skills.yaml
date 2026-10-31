@@ -1,0 +1,40 @@
+skills:
+  Python:
+    - python
+  SQL:
+    - sql
+    - postgresql
+    - mysql
+    - sql server
+  AWS:
+    - aws
+    - amazon web services
+  Azure:
+    - azure
+    - microsoft azure
+  Docker:
+    - docker
+  Kubernetes:
+    - kubernetes
+    - k8s
+  Apache Spark:
+    - apache spark
+    - pyspark
+  Airflow:
+    - airflow
+    - apache airflow
+  Terraform:
+    - terraform
+  Kafka:
+    - kafka
+    - apache kafka
+  Java:
+    - java
+  Power BI:
+    - power bi
+  Databricks:
+    - databricks
+  Snowflake:
+    - snowflake
+  dbt:
+    - dbt
