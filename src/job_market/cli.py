@@ -18,6 +18,7 @@ PIPELINE_STEPS = [
         "Silver Data Quality",
         "src.job_market.quality.validators",
     ),
+    
     (
         "Skill Extraction",
         "src.job_market.transformations.extract_skills",
@@ -25,6 +26,10 @@ PIPELINE_STEPS = [
     (
         "Silver to Gold",
         "src.job_market.transformations.silver_2_gold",
+    ),
+    (
+        "Daily Market Snapshots",
+        "src.job_market.analytics.daily_snapshots",
     ),
 ]
 
