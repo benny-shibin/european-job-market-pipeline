@@ -5,3 +5,7 @@ __pycache__/
 .env
 .env.*
 data/
+.pytest_cache/
+.coverage
+htmlcov/
+data/
